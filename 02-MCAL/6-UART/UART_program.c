@@ -18,8 +18,14 @@ static u8 UART_u8BufferIndex;
 static u8 UART_u8BufferSize;
 static u8 *Global_u8UARTBuffer  = NULL;
 
+/* Index Of array on Buffer */
+static u8 UART_u8RBufferIndex;
+static u8 UART_u8RBufferSize;
+static u8 *Global_u8UARTRBuffer  = NULL;
+
 
 static void (*UART_Global_PtrFuncEndNot)(void) 				=NULL;
+static void (*UART_Global_PtrResiveFuncEndNot)(void) 	    =NULL;
 
 void UART_voidUARTInit(void)
 {
@@ -123,6 +129,36 @@ u8 	UART_u8SendBufferASynchronous(u8 * Copy_pu8Buffer ,u8 Copy_u8BufferSize, voi
 
 }
 
+u8 	UART_u8ResiveBufferASynchronous(u8 * Copy_pu8Buffer ,u8 Copy_u8BufferSize, void (* Copy_pfunctionNotification)(void)){
+
+	u8 Local_u8ErroreState = STD_TYPES_OK;
+	if(Copy_pu8Buffer != NULL && (Copy_pfunctionNotification != NULL) && (UART_Global_u8BusyFlag == UART_u8NotBusy) ){
+
+		/* Set Busy Flag */
+
+		UART_Global_u8BusyFlag = UART_u8Busy;
+
+		/* Update Global Pointers */
+
+		UART_Global_PtrResiveFuncEndNot 		= Copy_pfunctionNotification;
+
+		UART_u8RBufferSize 						= Copy_u8BufferSize;
+
+		Global_u8UARTRBuffer 					= Copy_pu8Buffer;
+
+		UART_u8RBufferIndex=0;
+
+		/* Enable UART RX Complete UDR Interrupt*/
+
+		SET_BIT(UART_u8_UCSRB_REG,7);
+	}
+	else{
+		Local_u8ErroreState = STD_TYPES_NOK;
+	}
+	return Local_u8ErroreState;
+
+}
+
 u8 	UART_u8ResiveBufferSynchronous(u8 * Copy_pu8Buffer,u8 Copy_u8BufferSize){
 	u8 Local_u8ErroreState = STD_TYPES_OK,Local_u8IterOnBuffer;
 
@@ -161,6 +197,29 @@ void __vector_14(void){
 
 			UART_u8BufferIndex =0;
 			Global_u8UARTBuffer =NULL;
+			/* Set Flag */
+			UART_Global_u8BusyFlag = UART_u8NotBusy;
+		}
+	}
+}
+
+void __vector_13(void)__attribute__((signal,_INTR_ATTRS));
+void __vector_13(void){
+
+	if(UART_Global_PtrResiveFuncEndNot != NULL){
+
+		Global_u8UARTRBuffer[UART_u8RBufferIndex] = UART_u8_UDR_REG;
+		++UART_u8RBufferIndex;
+
+		if(UART_u8RBufferIndex == UART_u8RBufferSize){
+
+			UART_Global_PtrResiveFuncEndNot();
+
+			/* Disable Interrupt */
+			CLR_BIT(UART_u8_UCSRB_REG,7);
+
+			UART_u8RBufferIndex =0;
+			Global_u8UARTRBuffer =NULL;
 			/* Set Flag */
 			UART_Global_u8BusyFlag = UART_u8NotBusy;
 		}
